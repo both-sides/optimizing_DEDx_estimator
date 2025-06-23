@@ -1,0 +1,30 @@
+# ─── Data & outputs (big bin-files) ───────────────────────────────
+data/*.root
+output/
+tmp/
+
+# ─── Python artifacts & envs ─────────────────────────────────────
+__pycache__/
+*.py[cod]           # .pyc, .pyo, .pyd
+*.so                # compiled extensions
+.env                # “dotenv” files
+venv/
+.env/               # some people name their venv “.env”
+.venv/
+*.egg-info/         # pip install -e metadata
+pip-wheel-metadata/ # pip build outputs
+# if you use pytest:
+.pytest_cache/
+
+# ─── Jupyter ────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ─── Editors & OS ───────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ─── (Optional) packaging outputs ───────────────────────────────
+build/
+dist/
