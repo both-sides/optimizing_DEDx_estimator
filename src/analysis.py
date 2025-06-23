@@ -1,44 +1,6 @@
 import ROOT as rt
 from ROOT import VecOps
 import atexit
-# import numpy as np
-# import matplotlib.pyplot as plt
-# import math
-# import array
-
-#-------------------------------------------------------------------------------------------
-#  context manager for input file & TTree
-# class HscpData:
-#     """Open the AOD file and expose .tree Closes on exit"""
-#     def __init__(self,
-#                  path: str = "../data/HSCPgluino_M-1800_fromAOD.root",
-#                  treename: str = "HSCPFullAODAnalyzer/Events"):
-#         # self.file = rt.TFile.Open(path)
-#         # self.tree = self.file.Get("HSCPFullAODAnalyzer/Events")
-#         self._path     = path
-#         self._treename = treename
-#         self.file = None
-#         self.tree = None
-        
-#     def __enter__(self):
-#         self.file = rt.TFile.Open(self._path)
-#         if not self.file or not self.file.IsOpen():
-#             raise IOError(f"Cannot open {self._path}")
-#         self.tree = self.file.Get(self._treename)
-#         if not self.tree:
-#             raise KeyError(f"Tree {self._treename} not found")
-#         return self
-    
-#     # def close(self):
-#     #     if self.file and self.file.IsOpen():
-#     #         self.file.Close()
-    
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         if self.file and self.file.IsOpen():
-#             self.file.Close()
-#     # # context-manager hooks
-#     # def __enter__(self): return self
-#     # def __exit__(self, exc_type, exc, tb): self.close()
     
 # open the ROOT file once, globally
 root_file = rt.TFile.Open("../data/HSCPgluino_M-1800_fromAOD.root") 
@@ -46,20 +8,11 @@ root_file = rt.TFile.Open("../data/HSCPgluino_M-1800_fromAOD.root")
 # ensures it gets closed when the intergreter(jupyter kernel) closes
 atexit.register(root_file.Close)
 
-# hs_analyzer_dir = root_file.GetDirectory("HSCPFullAODAnalyzer")
-
-# events_obj = hs_analyzer_dir.Get("Events")
-# #print(obj.ClassName())   
 
 tree = root_file.Get("HSCPFullAODAnalyzer/Events")
 if not tree:
     raise RuntimeError("Could not find HSCPFullAODAnalyzer/Events in the ROOT file")
 
-# #evnt_cut_flow_func = hs_analyzer_dir.Get("EventCutFlow")
-# #hscp_cut_flow_func = hs_analyzer_dir.Get("HSCPCutFlow")
-
-# filename = "../data/HSCPgluino_M-1800_fromAOD.root"
-# treename = "HSCPFullAODAnalyzer/" + events_obj.GetName()
 
 # creates a dataframe globally
 df = rt.RDataFrame(tree)
