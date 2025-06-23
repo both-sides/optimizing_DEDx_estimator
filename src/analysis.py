@@ -36,13 +36,6 @@ COLOR_MAP = {
 }
 
 
-
-
-
-
-
-
-
 __all__ = ["root_file", "tree", "df", "df_filtered", "HscpData", "HMNCSBR", "TRUNCSBR", "COLOR_MAP"]
 
 
