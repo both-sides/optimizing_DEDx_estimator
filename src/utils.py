@@ -161,6 +161,8 @@ class HistogramDrawer:
         return (c, stack)
     
     
+    #TODO: THE LOWER PAD IS SOMEHOW NOT RENDERING CORECTLY
+    
     #Two‐panel ratio plot: top = overlay, bottom = ratio.
     def draw_ratio(self,
                    h_num: rt.TH1,
@@ -168,74 +170,83 @@ class HistogramDrawer:
                    canvas_name: str = "ratio",
                    title: str = "",
                    xlabel: str = "",
-                   ylabel: str = "",
+                   ylabel: str = "Number of tracks",
                    ratio_ylabel: str = "Ratio",
-                   ratio_range: tuple[float,float] = (-5, 5),
-                   logy: bool = False):
-        
-        # close any existing canvases so ROOT will make a truly new one
-        for canv in rt.gROOT.GetListOfCanvases():
-            canv.Close()
-    
-        # 1) make your canvas
-        c = rt.TCanvas("c_ratio","Ratio Plot", 800, 800)
+                   ratio_range: tuple[float, float] = (-5, 5),
+                   logy: bool = False) -> rt.TCanvas:
+        """
+        Draws a comparison of two histograms (h_num over h_den) with a ratio pad below.
+        Returns the ROOT TCanvas containing the two pads.
+        """
+        # Close any existing canvases so ROOT will make a new one
+        # for canv in rt.gROOT.GetListOfCanvases():
+        #     canv.Close()
 
-        #create two pads: top (0.3–1) and bottom (0–0.3)
+        # 1) Create canvas
+        c = self._new_canvas(canvas_name, title or "Ratio Plot", 800, 800)
+
+        # 2) Create pads: top (0.3–1) and bottom (0–0.3)
         pad1 = rt.TPad(f"{canvas_name}_pad1", "Top pad", 0, 0.3, 1, 1)
-        pad2 = rt.TPad(f"{canvas_name}_pad2","Bottom pad", 0, 0,   1, 0.3)
-        #pad1.SetBottomMargin(0)   # no x-axis tick labels
-        pad2.SetTopMargin(0.02)      # no title overlap
-        pad2.SetBottomMargin(0.4)    # room for x-axis label
-        pad1.Draw() 
+        pad2 = rt.TPad(f"{canvas_name}_pad2", "Bottom pad", 0, 0, 1, 0.3)
+        pad1.SetBottomMargin(0)
+        pad2.SetTopMargin(0.02)
+        pad2.SetBottomMargin(0)
+        pad1.Draw()
         pad2.Draw()
 
-        # 2) top pad: overlay
+        # 3) Draw histograms on top pad
         pad1.cd()
-        if logy: 
+        if logy:
             pad1.SetLogy(1)
-        h_den.SetTitle(title)
+
         h_den.SetLineColor(rt.kBlack)
         h_num.SetLineColor(rt.kRed)
-        
-        # auto-scale so they both fit
         maxval = max(h_den.GetMaximum(), h_num.GetMaximum())
-        h_den.SetMaximum(maxval*1.2)
+        h_den.SetMaximum(maxval * 1.2)
+
         h_den.SetTitle(title)
-        h_den.GetYaxis().SetTitle("Number of tracks")
+        h_den.GetYaxis().SetTitle(ylabel)
         h_den.Draw()
         h_num.Draw("same")
         pad1.Update()
 
-
-        #build the ratio histogram in pad2
+        # 4) Build ratio in bottom pad
         pad2.cd()
-        ratio = h_num.Clone("ratio")       # clone numerator
-        ratio.Divide(h_den)                # divide by denominator
-        ratio.SetMarkerStyle(20)           # draw as points
-        ratio.SetTitle("")                 # no global title
-        ratio.GetYaxis().SetTitle("Num/Den")
-        ratio.GetXaxis().SetTitle("DEDx_IhStrip (MeV/cm)")
-        # tweak axis label sizes so they’re big in the small pad:
+        ratio = h_num.Clone(f"{h_num.GetName()}_ratio")
+        ratio.Divide(h_den)
+        ratio.SetMarkerStyle(20)
+        ratio.SetTitle("")
+        ratio.GetYaxis().SetTitle(ratio_ylabel)
+        ratio.GetXaxis().SetTitle(xlabel)
+
+        # Adjust label sizes
         ratio.GetYaxis().SetTitleSize(0.05)
         ratio.GetYaxis().SetTitleOffset(0.4)
         ratio.GetYaxis().SetLabelSize(0.05)
         ratio.GetXaxis().SetTitleSize(0.08)
         ratio.GetXaxis().SetLabelSize(0.08)
 
-        # set a sensible ratio range, e.g. 0.5–1.5
-        ratio.SetMinimum(-5)
-        ratio.SetMaximum(5)
-        ratio.Draw("EP")                   # E: error bars, P: points
+        ratio.SetMinimum(ratio_range[0])
+        ratio.SetMaximum(ratio_range[1])
+        ratio.Draw("EP")
         pad2.Update()
 
-
-        #finally draw the overall canvas
+        # 5) Finalize canvas
         c.cd()
         c.Modified()
         c.Draw()
+
         return c
-                   
-        
+
+    def save(self,
+             canvas: rt.TCanvas,
+             filename: str,
+             formats: list[str] = ("png", "pdf")):
+        """
+        Save a canvas to disk in one or more formats.
+        """
+        for fmt in formats:
+            canvas.SaveAs(f"{filename}.{fmt}")
         
                               
         
