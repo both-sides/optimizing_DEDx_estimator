@@ -30,9 +30,22 @@ TRUNCSBR = ["DeDx_ItStrip0","DeDx_ItStrip5", "DeDx_ItStrip10", "DeDx_ItStrip15",
 
 
 COLOR_MAP = {
-    1: rt.kViolet,   2: rt.kPink,   3: rt.kGray,   4: rt.kGreen,
-    5: rt.kBlue,     6: rt.kYellow, 7: rt.kMagenta,8: rt.kCyan,
-    9: rt.kOrange,  10: rt.kBlack
+    1:  rt.kRed,
+    2:  rt.kBlue,
+    3:  rt.kGreen,
+    4:  rt.kMagenta,
+    5:  rt.kCyan,
+    6:  rt.kOrange,
+    7:  rt.kYellow,
+    8:  rt.kViolet,
+    9:  rt.kPink,
+    10: rt.kAzure,
+    11: rt.kSpring,
+    12: rt.kTeal,
+    13: rt.kGray,  # neutral mid‐tone
+    # two extra custom colors:
+    14: rt.TColor.GetColor("#8B4513"),  # Brown
+    15: rt.TColor.GetColor("#00CED1"),  # DarkTurquoise
 }
 
 
