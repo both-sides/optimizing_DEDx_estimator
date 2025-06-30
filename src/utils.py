@@ -2,6 +2,7 @@ import math
 import ROOT as rt
 from typing import List
 from datetime import date
+import uuid
 
 
 ## Constants ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -74,10 +75,11 @@ def h1Avg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
 def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to be a dictionary with {key = histogram name : value = histogram object (or pointers to that histogram object)}
     stack = rt.THStack(stack_name, hists_title)
     
-    for proxy in hists.values():
-        stack.Add(proxy.GetPtr()) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
+    for hist in hists.values():
+        stack.Add(hist) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
     stack.Write()      #
     canvas.Write()
+    return stack
     
     
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -164,79 +166,165 @@ class HistogramDrawer:
     #TODO: THE LOWER PAD IS SOMEHOW NOT RENDERING CORECTLY
     
     #Two‐panel ratio plot: top = overlay, bottom = ratio.
-    def draw_ratio(self,
-                   h_num: rt.TH1,
-                   h_den: rt.TH1,
-                   canvas_name: str = "ratio",
-                   title: str = "",
-                   xlabel: str = "",
-                   ylabel: str = "Number of tracks",
-                   ratio_ylabel: str = "Ratio",
-                   ratio_range: tuple[float, float] = (-5, 5),
-                   logy: bool = False) -> rt.TCanvas:
+    # def draw_ratio(self,
+    #                h_num: rt.TH1,
+    #                h_den: rt.TH1,
+    #                canvas_name: str = "ratio",
+    #                title: str = "",
+    #                xlabel: str = "",
+    #                ylabel: str = "Number of tracks",
+    #                ratio_ylabel: str = "Ratio",
+    #                ratio_range: tuple[float, float] = (-5, 5),
+    #                logy: bool = False) -> rt.TCanvas:
+    #     """
+    #     Draws a comparison of two histograms (h_num over h_den) with a ratio pad below.
+    #     Returns the ROOT TCanvas containing the two pads.
+    #     """
+    #     # Close any existing canvases so ROOT will make a new one
+    #     # for canv in rt.gROOT.GetListOfCanvases():
+    #     #     canv.Close()
+
+    #     # 1) Create canvas
+    #     c = self._new_canvas(canvas_name, title or "Ratio Plot", 800, 800)
+
+    #     # 2) Create pads: top (0.3–1) and bottom (0–0.3)
+    #     pad1 = rt.TPad(f"{canvas_name}_pad1", "Top pad", 0, 0.3, 1, 1)
+    #     pad2 = rt.TPad(f"{canvas_name}_pad2", "Bottom pad", 0, 0, 1, 0.3)
+    #     pad1.SetBottomMargin(0)
+    #     pad2.SetTopMargin(0.02)
+    #     pad2.SetBottomMargin(0)
+    #     pad1.Draw()
+    #     pad2.Draw()
+
+    #     # 3) Draw histograms on top pad
+    #     pad1.cd()
+    #     if logy:
+    #         pad1.SetLogy(1)
+
+    #     h_den.SetLineColor(rt.kBlack)
+    #     h_num.SetLineColor(rt.kRed)
+    #     maxval = max(h_den.GetMaximum(), h_num.GetMaximum())
+    #     h_den.SetMaximum(maxval * 1.2)
+
+    #     h_den.SetTitle(title)
+    #     h_den.GetYaxis().SetTitle(ylabel)
+    #     h_den.Draw()
+    #     h_num.Draw("same")
+    #     pad1.Update()
+
+    #     # 4) Build ratio in bottom pad
+    #     pad2.cd()
+    #     ratio = h_num.Clone(f"{h_num.GetName()}_ratio")
+    #     ratio.Divide(h_den)
+    #     ratio.SetMarkerStyle(20)
+    #     ratio.SetTitle("")
+    #     ratio.GetYaxis().SetTitle(ratio_ylabel)
+    #     ratio.GetXaxis().SetTitle(xlabel)
+
+    #     # Adjust label sizes
+    #     ratio.GetYaxis().SetTitleSize(0.05)
+    #     ratio.GetYaxis().SetTitleOffset(0.4)
+    #     ratio.GetYaxis().SetLabelSize(0.05)
+    #     ratio.GetXaxis().SetTitleSize(0.08)
+    #     ratio.GetXaxis().SetLabelSize(0.08)
+
+    #     ratio.SetMinimum(ratio_range[0])
+    #     ratio.SetMaximum(ratio_range[1])
+    #     ratio.Draw("EP")
+    #     pad2.Update()
+
+    #     # 5) Finalize canvas
+    #     c.cd()
+    #     c.Modified()
+    #     c.Draw()
+
+    #     return c
+    
+    def create_two_ratio(self,
+                       h_num: rt.TH1,
+                       h_den: rt.TH1,
+                       option: str = "pois",
+                       title: str = "") -> rt.TRatioPlot:
         """
-        Draws a comparison of two histograms (h_num over h_den) with a ratio pad below.
-        Returns the ROOT TCanvas containing the two pads.
+        Build and return a TRatioPlot for h_num / h_den (no drawing).
         """
-        # Close any existing canvases so ROOT will make a new one
-        # for canv in rt.gROOT.GetListOfCanvases():
-        #     canv.Close()
-
-        # 1) Create canvas
-        c = self._new_canvas(canvas_name, title or "Ratio Plot", 800, 800)
-
-        # 2) Create pads: top (0.3–1) and bottom (0–0.3)
-        pad1 = rt.TPad(f"{canvas_name}_pad1", "Top pad", 0, 0.3, 1, 1)
-        pad2 = rt.TPad(f"{canvas_name}_pad2", "Bottom pad", 0, 0, 1, 0.3)
-        pad1.SetBottomMargin(0)
-        pad2.SetTopMargin(0.02)
-        pad2.SetBottomMargin(0)
-        pad1.Draw()
-        pad2.Draw()
-
-        # 3) Draw histograms on top pad
-        pad1.cd()
-        if logy:
-            pad1.SetLogy(1)
-
+        
+        #creating a clone of h_num..... i'd be formatting some of its attributes
+        h_num = h_num.Clone(f"{h_num.GetName()} vs {h_den.GetName()}")
+        h_num.SetTitle(title)
         h_den.SetLineColor(rt.kBlack)
         h_num.SetLineColor(rt.kRed)
-        maxval = max(h_den.GetMaximum(), h_num.GetMaximum())
-        h_den.SetMaximum(maxval * 1.2)
+        rp = rt.TRatioPlot(h_num, h_den, option)
+        return rp
 
-        h_den.SetTitle(title)
-        h_den.GetYaxis().SetTitle(ylabel)
-        h_den.Draw()
-        h_num.Draw("same")
-        pad1.Update()
+    def draw_ratio(self,
+                   rp: rt.TRatioPlot,
+                   canvas_name: str = "c",
+                   title: str = "",
+                   xlabel: str = "DEDx [MeV]",
+                   ylabel: str = "Number of tracks",
+                   yratio_label: str = "h_num/h_den",
+                   range: list = [-5, 5],
+                   logy: bool = False) -> rt.TCanvas:
+ 
+        # Close any existing canvas with this name
+        for canv in list(rt.gROOT.GetListOfCanvases()):
+            if canv.GetName() == canvas_name:
+                canv.Close()
 
-        # 4) Build ratio in bottom pad
-        pad2.cd()
-        ratio = h_num.Clone(f"{h_num.GetName()}_ratio")
-        ratio.Divide(h_den)
-        ratio.SetMarkerStyle(20)
-        ratio.SetTitle("")
-        ratio.GetYaxis().SetTitle(ratio_ylabel)
-        ratio.GetXaxis().SetTitle(xlabel)
+        # Create new canvas
+        c = self._new_canvas(canvas_name, title)
+        if logy:
+            c.SetLogy()
+            
+        rp.SetH1DrawOpt("hist")      # draw first histogram as an empty‐filled outline
+        rp.SetH2DrawOpt("hist same") # draw second histogram with same binning
+        rp.SetGraphDrawOpt("P")
 
-        # Adjust label sizes
-        ratio.GetYaxis().SetTitleSize(0.05)
-        ratio.GetYaxis().SetTitleOffset(0.4)
-        ratio.GetYaxis().SetLabelSize(0.05)
-        ratio.GetXaxis().SetTitleSize(0.08)
-        ratio.GetXaxis().SetLabelSize(0.08)
+        # Draw ratio plot
+        rp.Draw()
+        
+        c.Update()
+        # — Upper pad X–axis:
+        ux = rp.GetUpperRefXaxis()
+        ux.SetTitleOffset(1.0)
+        ux.SetLabelSize(0.04)
+        
+        
+        # lower x axis
+        lx = rp.GetLowerRefXaxis()
+        lx.SetTitle(xlabel)
+        
+        # — Upper pad Y–axis:
+        uy = rp.GetUpperRefYaxis()
+        uy.SetTitle(ylabel)    # the histogram count label
+        uy.SetTitleOffset(1.2)
+        uy.SetLabelSize(0.04)
+        
+        # — Lower pad Y–axis (the ratio):
+        ly = rp.GetLowerRefYaxis()
+        ly.SetTitle(yratio_label)             
+        ly.SetTitleOffset(0.8)
+        ly.SetLabelSize(0.02)
 
-        ratio.SetMinimum(ratio_range[0])
-        ratio.SetMaximum(ratio_range[1])
-        ratio.Draw("EP")
-        pad2.Update()
-
-        # 5) Finalize canvas
-        c.cd()
+        lg = rp.GetLowerRefGraph()
+        lg.SetMinimum(range[0])
+        lg.SetMaximum(range[1])
+        rp.GetLowerPad().Modified()
+        rp.GetLowerPad().Update() 
+        
         c.Modified()
-        c.Draw()
-
+        c.Update()
+        
         return c
+
+
+        
+        
+
+
+#TODO: include the  fit residual method(ratio of a fit and the histogram), and THStack vs TH1 ratio plot method
+
 
     def save(self,
              canvas: rt.TCanvas,
