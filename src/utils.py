@@ -3,6 +3,7 @@ import ROOT as rt
 from typing import List
 from datetime import date
 import uuid
+import numpy as np
 
 
 ## Constants ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -79,7 +80,28 @@ def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to
     stack.Write()      #
     canvas.Write()
     return stack
+
+
+# Return (nbins, xmin, xmax) using the Freedman–Diaconis rule.
+def freedman_diaconis_bins(values, *, range_pad=0.05):
+    values = np.asarray(values, dtype=float)
+    n = values.size
+    if n < 2:
+        raise ValueError("Need at least 2 points for IQR")
+    q25, q75 = np.percentile(values, [25, 75])
+    iqr = q75 - q25
+    h = 2.0 * iqr / n ** (1 / 3)          # Freedman–Diaconis width
     
+    if h <= 0:                             # fallback for pathological IQR=0
+        h = 1e-12
+
+    xmin, xmax = values.min(), values.max()
+    span  = xmax - xmin
+    nbins = int(np.ceil(span / h))
+
+    # Padding edges a bit so min/max don't sit exactly on a bin edge
+    pad = span * range_pad
+    return max(nbins, 1), xmin - pad, xmax + pad
     
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #TH1s histogram drawer class
