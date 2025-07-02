@@ -75,7 +75,7 @@ def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to
     stack = rt.THStack(stack_name, hists_title)
     
     for proxy in hists.values():
-        stack.Add(proxy.GetPtr()) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
+        stack.Add(proxy) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
     stack.Write()      #
     canvas.Write()
     return stack
