@@ -23,8 +23,7 @@ COLOR_MAP = {
     10: rt.kAzure,
     11: rt.kSpring,
     12: rt.kTeal,
-    13: rt.kGray,  # neutral mid‐tone
-    # two extra custom colors:
+    13: rt.kGray,  
     14: rt.TColor.GetColor("#8B4513"),  # Brown
     15: rt.TColor.GetColor("#00CED1"),  # DarkTurquoise
 }
@@ -75,8 +74,8 @@ def h1Avg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
 def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to be a dictionary with {key = histogram name : value = histogram object (or pointers to that histogram object)}
     stack = rt.THStack(stack_name, hists_title)
     
-    for hist in hists.values():
-        stack.Add(hist) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
+    for proxy in hists.values():
+        stack.Add(proxy.GetPtr()) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
     stack.Write()      #
     canvas.Write()
     return stack

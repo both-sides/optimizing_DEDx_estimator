@@ -1,6 +1,5 @@
 # ─── Data & outputs (big bin-files) ───────────────────────────────
 data/*.root
-output/
 tmp/
 
 # ─── Python artifacts & envs ─────────────────────────────────────
