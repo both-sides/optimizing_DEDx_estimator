@@ -81,6 +81,18 @@ def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to
     canvas.Write()
     return stack
 
+#returns static start and end values adjusted with offset for each fit
+def fit_range(lst: list, offset):
+  start = min(lst) - offset
+  end = max(lst) + offset
+  return (start, end)
+
+def seeds(hist):
+  amp_guess  = hist.GetMaximum()                       # scale
+  mpv_guess  = hist.GetBinCenter(hist.GetMaximumBin()) # MPV
+  sigma_guess = 0.3 * hist.GetRMS() or 0.1*mpv_guess   # crude width
+  
+  return mpv_guess, amp_guess, sigma_guess
 
 # Return (nbins, xmin, xmax) using the Freedman–Diaconis rule.
 def freedman_diaconis_bins(values, *, range_pad=0.05):
