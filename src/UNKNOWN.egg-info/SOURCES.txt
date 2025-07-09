@@ -3,6 +3,7 @@ pyproject.toml
 setup.cfg
 src/__init__.py
 src/analysis.py
+src/smt.py
 src/utils.py
 src/UNKNOWN.egg-info/PKG-INFO
 src/UNKNOWN.egg-info/SOURCES.txt
