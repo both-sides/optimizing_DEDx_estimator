@@ -1,9 +1,10 @@
 import math
 import ROOT as rt
-from typing import List
+from typing import List, Dict, Tuple, Any, Optional
 from datetime import date
 import uuid
 import numpy as np
+from analysis import tree
 
 
 ## Constants ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -45,6 +46,7 @@ def ArAvg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
         result.append(ev_avgs)
     return result
 
+
 def GeoAvg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
     """Geometric mean per track per event."""
     result = []
@@ -57,6 +59,7 @@ def GeoAvg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
                 ev_avgs.append(math.prod(track) ** (1.0 / len(track)))
         result.append(ev_avgs)
     return result
+
 
 def h1Avg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
     """Harmonic mean per track per event."""
@@ -71,6 +74,7 @@ def h1Avg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
         result.append(ev_avgs)
     return result
 
+
 # builds a histogram stack and writes to the current open root file 
 def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to be a dictionary with {key = histogram name : value = histogram object (or pointers to that histogram object)}
     stack = rt.THStack(stack_name, hists_title)
@@ -81,11 +85,13 @@ def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to
     canvas.Write()
     return stack
 
+
 #returns static start and end values adjusted with offset for each fit
 def fit_range(lst: list, offset):
   start = min(lst) - offset
   end = max(lst) + offset
   return (start, end)
+
 
 def seeds(hist):
   amp_guess  = hist.GetMaximum()                       # scale
@@ -93,6 +99,7 @@ def seeds(hist):
   sigma_guess = 0.3 * hist.GetRMS() or 0.1*mpv_guess   # crude width
   
   return mpv_guess, amp_guess, sigma_guess
+
 
 # Return (nbins, xmin, xmax) using the Freedman–Diaconis rule.
 def freedman_diaconis_bins(values, *, range_pad=0.05):
@@ -114,6 +121,179 @@ def freedman_diaconis_bins(values, *, range_pad=0.05):
     # Padding edges a bit so min/max don't sit exactly on a bin edge
     pad = span * range_pad
     return max(nbins, 1), xmin - pad, xmax + pad
+
+
+def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
+  """
+  Loop over at most `max_hists` tracks with len(track)>threshold, fit a Landau,
+  and return dict of:
+    - corel   : list of (mpv, h2_mean)
+    - params  : list of (mpv, sigma)
+    - h2      : list of h2_mean
+    - neg_mpvs: list of “Event X Trk Y” with mpv<=0
+  """
+  
+  # ensuring that the DEDx_IhStrip branch is on
+  tree.SetBranchStatus("DeDx_IhStrip", 1)
+  
+  # pre-allocate data containers
+  corel_params   = []  # (mpv, h2_mean)
+  params  = []  # (mpv, sigma)
+  harmonic2_means= []
+  neg_ids = []
+  neg_tracks = []
+  
+  # create one histogram & one TF1 and reuse them
+  hist     = rt.TH1F("h", "tmp",    1, 0, 1)     # binning/range will be reset
+  f_landau= rt.TF1("f_landau", "landau", 0, 1)
+  
+  n_fits = 0
+  logs   = []  # buffer for fit printouts
+  
+  for event, tracks in zip(tree, cluster):
+    for trk_idx, track in enumerate(tracks): 
+      if len(track) <= threshold:
+        continue
+      if n_fits >= max_hists:
+        break
+      
+      #using precalculated track's h2 means
+      try:
+        harmonic2 = event.DeDx_IhStrip[trk_idx]
+      except (TypeError, IndexError):
+          # if it's a single float per track, omit the index
+        harmonic2 = event.DeDx_IhStrip
+      
+      # Freedman–Diaconis binning
+      nbins, lo, hi = freedman_diaconis_bins(track)
+      
+      # reset & reconfigure the one histogram
+      hist.Reset()
+      hist.SetBins(nbins, 0, hi)
+      bw = hist.GetBinWidth(nbins)
+      hist.GetYaxis().SetTitle(f"Entries/{bw:.2f}")
+      
+      # filling and drawing the hists
+      for hit in track:
+          hist.Fill(hit)
+      
+      mpv_guess, amp_guess, sigma_guess = seeds(hist)
+      
+      f_landau.SetRange(0, hi)
+      f_landau.SetParameters(amp_guess, mpv_guess, sigma_guess) #seeding
+      
+      # I'm trying to keep Minuit away from crazy regions
+      f_landau.SetParLimits(1, lo, hi)         # MPV must stay inside data
+      f_landau.SetParLimits(2, 0.05, lo - hi)  # σ positive, < full range
+      
+      hist.Fit(f_landau, "RQ")
+      n_fits += 1
+
+      # extracting results
+      f = hist.GetFunction("f_landau")
+      
+      if not f:  # fit might have failed
+        continue
+      
+      mpv = f.GetParameter(1)
+      sigma = f.GetParameter(2)
+      
+      corel_params.append((mpv, harmonic2))
+      params.append((mpv, sigma))
+      harmonic2_means.append(harmonic2)
+      
+      if mpv <= 0:
+        neg_ids.append(f"Event {event.event} Trk {trk_idx}") 
+        neg_tracks.append(track) # capture (the actual hits of these negative)tracks
+  
+      if verbose:
+          errs = [f.GetParError(i) for i in range(f.GetNpar())]
+          logs.append(f" fit#{n_fits-1}: mpv = {mpv:.3g}±{errs[1]:.3g}  sigma = {sigma:.3g}±{errs[2]:.3g} vs {harmonic2}")
+   
+        
+    if n_fits >= max_hists:
+      break
+   
+  if verbose and logs:
+    print("\n".join(logs))
+            
+  return {
+    "corel":    corel_params,
+    "params":   params,
+    "h2":       harmonic2_means,
+    "neg_mpvs": neg_ids,
+    "neg_tracks": neg_tracks
+}
+      
+
+def build_event_index(tree: rt.TTree, event_branch: str = "event") -> Dict[int, int]:
+    """
+    Scan `tree` once and return a dict mapping
+      event_number (int) -> tree entry index (0..N-1)
+    """
+    idx = {}
+    for eidx in range(tree.GetEntries()):
+        tree.GetEntry(eidx)
+        evt = int(getattr(tree, event_branch))  
+        idx[evt] = eidx
+    return idx
+
+
+def get_attrs_for_labels(tree: rt.TTree,
+                         labels: List[str], 
+                         attrs: List[str], 
+                         event_to_entry: Optional[Dict[int, int]] = None,
+                         event_branch: str = "event")-> Tuple[Dict[str, Dict[str, Any]], Dict[int, int]]:
+    
+    """
+    Parameters
+    ----------
+    tree            : ROOT TTree
+    labels          : ["Event <num> Trk <idx>", ...]
+    attrs           : list of branch names you want (e.g. ['DeDx_IhStrip','Isotrack_pt'])
+    event_to_entry  : cache from build_event_index(); if None we build it
+    event_branch    : name of the event-number branch (default 'event')
+
+    Returns
+    -------
+    results         : { label : { attr : value, ... }, ... }
+    event_to_entry  : the (possibly newly built) cache you can reuse
+    """
+ 
+    # build cache on first call
+    if event_to_entry is None:
+        event_to_entry = build_event_index(tree, event_branch)
+
+    results: Dict[str, Dict[str, Any]] = {}
+    for label in labels:
+        # parse out the numbers
+         # "Event 43249 Trk 2"
+        try:
+            _, evt_str, _, trk_str = label.split()
+            evt_num  = int(evt_str)
+            trk_idx  = int(trk_str)
+        except ValueError:
+            raise ValueError(f"Label '{label}' not in 'Event <num> Trk <idx>' format")
+
+        entry = event_to_entry.get(evt_num)
+        if entry is None:
+            results[label] = {a: None for a in attrs}
+            continue
+
+        # load that one event
+        tree.GetEntry(entry)
+
+        per_track_data = {}
+        for a in attrs:
+            raw = getattr(tree, a)
+            # try vector-style access, else scalar
+            try:
+                per_track_data[a] = raw[trk_idx]
+            except (TypeError, IndexError):
+                per_track_data[a] = raw
+        results[label] = per_track_data
+
+    return results, event_to_entry
     
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #TH1s histogram drawer class
