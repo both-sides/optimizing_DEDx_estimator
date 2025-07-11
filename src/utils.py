@@ -109,14 +109,28 @@ def freedman_diaconis_bins(values, *, range_pad=0.05):
         raise ValueError("Need at least 2 points for IQR")
     q25, q75 = np.percentile(values, [25, 75])
     iqr = q75 - q25
+
+    # Warn if IQR is zero
+    if iqr == 0:
+        print(f"[binning_warning] IQR=0 for {n} points "
+              f"(min={values.min():.3g}, max={values.max():.3g})")
+
+
     h = 2.0 * iqr / n ** (1 / 3)          # Freedman–Diaconis width
     
     if h <= 0:                             # fallback for pathological IQR=0
+        print(f"[binning_warning] Computed bin width h={h:.3g} ≤ 0; "
+              "falling back to h=1e-12")
         h = 1e-12
 
     xmin, xmax = values.min(), values.max()
     span  = xmax - xmin
+
     nbins = int(np.ceil(span / h))
+    if nbins < 1:
+        print(f"[binning_error] nbins={nbins} < 1 (span={span:.3g}, h={h:.3g}); "
+              "forcing nbins=1")
+        nbins = 1
 
     # Padding edges a bit so min/max don't sit exactly on a bin edge
     pad = span * range_pad
