@@ -33,6 +33,15 @@ COLOR_MAP = {
 
 ## Functions ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+def harmonic2_inloop(track):
+    arr = np.asarray(track, dtype=np.float64)
+    arr = arr[arr > 0]          # keep only positive hits
+    if arr.size == 0:
+        return 0.0              # or `np.nan`
+    return np.sqrt(arr.size / np.sum(1.0 / arr**2))
+
+
+
 def ArAvg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
     """Arithmetic mean per track per event."""
     result = []
@@ -73,6 +82,22 @@ def h1Avg_DEDx(cluster: List[List[float]]) -> List[List[float]]:
                 ev_avgs.append(len(track) / sum(1.0 / x for x in track))
         result.append(ev_avgs)
     return result
+
+
+def records_equal(rec1, rec2, tol=1e-12):
+    # compare every key/value in two dicts; tol for floating ≈ bit-identical
+    if rec1.keys() != rec2.keys():
+        return False
+    for k in rec1:
+        v1, v2 = rec1[k], rec2[k]
+        if isinstance(v1, float):
+            if abs(v1 - v2) > tol:
+                return False
+        else:
+            if v1 != v2:
+                return False
+    return True
+
 
 
 # builds a histogram stack and writes to the current open root file 
@@ -171,12 +196,15 @@ def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
       if n_fits >= max_hists:
         break
       
-      #using precalculated track's h2 means
-      try:
-        harmonic2 = event.DeDx_IhStrip[trk_idx]
-      except (TypeError, IndexError):
-          # if it's a single float per track, omit the index
-        harmonic2 = event.DeDx_IhStrip
+    #   #using precalculated track's h2 means
+    #   try:
+    #     harmonic2 = event.DeDx_IhStrip[trk_idx]
+    #   except (TypeError, IndexError):
+    #       # if it's a single float per track, omit the index
+    #     harmonic2 = event.DeDx_IhStrip
+    
+    #using vectorised in loop calculation now
+      harmonic2 = harmonic2_inloop(track)
       
       # Freedman–Diaconis binning
       nbins, lo, hi = freedman_diaconis_bins(track)
@@ -239,6 +267,96 @@ def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
     "neg_tracks": neg_tracks
 }
       
+
+def draw_landau_fits(tree, cluster, threshold, max_hists):
+    """
+    Loop over events and tracks, build & fit Landau histograms, draw each fit,
+    and return only the fit parameters, correlations, and the histograms themselves.
+
+    Args:
+      tree        : ROOT TTree or iterable of event objects
+      clusters    : list-of-lists of hit‐value arrays, parallel to `tree`
+      threshold   : minimum number of hits needed to attempt a fit
+      max_hists   : maximum number of histograms/fits before stopping
+
+    Returns:
+      {
+        "parameters": [(mpv, sigma), …],
+        "corel":      [(mpv, harmonic2), …],
+        "hists":      { hist_index: TH1F, … }
+      }
+    """
+    parameters   = []
+    corel_params = []
+    hists        = {}
+    hist_count   = 0
+
+    # single canvas reused for speed
+    canvas = rt.TCanvas("c_landau", "Landau Fits", 800, 600)
+
+    for event, tracks in zip(tree, cluster):
+        for trk_idx, track in enumerate(tracks):
+            if len(track) <= threshold or hist_count >= max_hists:
+                continue
+
+            # get the precomputed harmonic‐2 mean from the event
+            try:
+                h2 = event.DeDx_IhStrip[trk_idx]
+            except (TypeError, IndexError):
+                h2 = event.DeDx_IhStrip
+            
+            # #using vectorised in loop calculation now
+            # h2 = harmonic2_inloop(track)
+
+            # binning by Freedman‐Diaconis
+            nbins, lo, hi = freedman_diaconis_bins(track)
+
+            # fill histogram
+            name  = f"h{hist_count}"
+            title = f"Event {event.event}, Trk {trk_idx};dE/dx (MeV/cm);Entries"
+            hist  = rt.TH1F(name, title, nbins, 0, hi)
+            width = hist.GetBinWidth(1)
+            hist.GetYaxis().SetTitle(f"Entries/{width:.2f}")
+
+            for hit in track:
+                hist.Fill(hit)
+
+            # seed the Landau
+            mpv0, amp0, sigma0 = seeds(hist)
+            f_landau = rt.TF1("f_landau", "landau", 0, hi)
+            f_landau.SetParameters(amp0, mpv0, sigma0)
+            f_landau.SetParLimits(1, lo, hi)         # MPV inside data
+            f_landau.SetParLimits(2, 0.01, hi - lo)  # σ > 0
+
+            # do the fit quietly and store the hist
+            hist.Fit(f_landau, "RQ")
+            hists[hist_count] = hist
+
+            # draw result
+            canvas.cd()
+            hist.Draw("P")
+            f_landau.Draw("same")
+            canvas.Update()
+
+            # pull out the fit results
+            mpv   = f_landau.GetParameter(1)
+            sigma = f_landau.GetParameter(2)
+            parameters.append((mpv, sigma))
+            corel_params.append((mpv, h2))
+
+            hist_count += 1
+            if hist_count >= max_hists:
+                break
+        if hist_count >= max_hists:
+            break
+
+    return {
+        "parameters": parameters,
+        "corel":      corel_params,
+        "hists":      hists,
+    }
+
+
 
 def build_event_index(tree: rt.TTree, event_branch: str = "event") -> Dict[int, int]:
     """
@@ -309,6 +427,26 @@ def get_attrs_for_labels(tree: rt.TTree,
 
     return results, event_to_entry
     
+
+def report_integrals(hists, mpv_hist=None):
+    """
+    Print total entries (incl. under/overflow) for each track histogram,
+    and for the MPV histogram if provided.
+    
+    Args:
+      hists    : dict of { idx : TH1F }
+      mpv_hist : TH1F of MPV values (optional)
+    """
+    for idx, hist in hists.items():
+        nb = hist.GetNbinsX()
+        total = hist.Integral(0, nb+1)
+        print(f"[hist #{idx}] bins=0→{nb+1}  entries={total:g}")
+
+    if mpv_hist is not None:
+        nb = mpv_hist.GetNbinsX()
+        total = mpv_hist.Integral(0, nb+1)
+        print(f"[MPV hist] bins=0→{nb+1}  entries={total:g}")
+
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #TH1s histogram drawer class
 class HistogramDrawer:
