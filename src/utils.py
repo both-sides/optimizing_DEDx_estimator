@@ -104,8 +104,18 @@ def records_equal(rec1, rec2, tol=1e-12):
 def write_stacked_histos(stack_name, hists, hists_title, canvas): # hists has to be a dictionary with {key = histogram name : value = histogram object (or pointers to that histogram object)}
     stack = rt.THStack(stack_name, hists_title)
     
+    for hist in hists.values():
+        stack.Add(hist) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
+    stack.Write()      #
+    canvas.Write()
+    return stack
+
+# builds a histogram stack and writes to the current open root file 
+def write_stacked_histos_ptr(stack_name, hists, hists_title, canvas): # hists has to be a dictionary with {key = histogram name : value = histogram object (or pointers to that histogram object)}
+    stack = rt.THStack(stack_name, hists_title)
+    
     for proxy in hists.values():
-        stack.Add(proxy) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
+        stack.Add(proxy.GetPtr()) #pyroot stores histogram object pointers in the dictionary, I need to pull that out
     stack.Write()      #
     canvas.Write()
     return stack
