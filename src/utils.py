@@ -5,6 +5,7 @@ from datetime import date
 import uuid
 import numpy as np
 from analysis import tree
+import logging
 
 
 ## Constants ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -31,7 +32,55 @@ COLOR_MAP = {
 }
 
 
+FILTERS = [
+    ("minPixelHits",   "DeDx_PixelNoL1NOM >= 2"),
+    ("highPt",         "IsoTrack_pt > 55"),
+    ("HLT_Mu50",       "HLT_Mu50"),
+    ("validHitsFrac",  "IsoTrack_fractionOfValidHits > 0.8"),
+    ("minDedxHits",    "nDeDxMeas >= 10"),
+    ("highPurity",     "IsoTrack_isHighPurityTrack"),
+    ("chi2",           "IsoTrack_normChi2 < 5"),
+    ("dxy",            "fabs(IsoTrack_dxy) < 0.02"),
+    ("dz",             "fabs(IsoTrack_dz)  < 0.10"),
+]
+
 ## Functions ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+def apply_sequential_filters(rdf_in, filters=FILTERS, *, logger=None):
+    """
+    Apply filters one after another, printing (or logging) the surviving
+    entry count after each cut.  Returns the final RDataFrame.
+    """
+    if logger is None:                       # fall back to stdout
+        logger = logging.getLogger("FilterLog")
+        if not logger.handlers:
+            logging.basicConfig(level=logging.INFO,
+                                format="%(message)s")
+
+    counts   = []            # Count() nodes – still lazy at this point
+    rdf_curr = rdf_in
+
+    # First count before any selections
+    counts.append(("start", rdf_curr.Count()))
+
+    # Chain the filters
+    for label, expr in filters:
+        rdf_curr = rdf_curr.Filter(expr, label)
+        counts.append((label, rdf_curr.Count()))
+
+    # Trigger the event loop exactly once
+    logger.info(" ── Executing event loop ──")
+    for label, counter in counts:
+        n = counter.GetValue()          # evaluation happens here
+        logger.info(f"{label:15s}: {n:10,d}")
+
+        if n == 0:
+            logger.warning(f"   ↳ no entries left after '{label}' – "
+                           "double-check this cut!")
+            break
+
+    return rdf_curr
+
+
 
 def harmonic2_inloop(track):
     arr = np.asarray(track, dtype=np.float64)
@@ -172,7 +221,7 @@ def freedman_diaconis_bins(values, *, range_pad=0.05):
     return max(nbins, 1), xmin - pad, xmax + pad
 
 
-def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
+def fit_mpv(cluster: list, threshold: int = 2, *, max_hists: int = float('inf'), verbose=False):
   """
   Loop over at most `max_hists` tracks with len(track)>threshold, fit a Landau,
   and return dict of:
@@ -201,54 +250,65 @@ def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
   
   for event, tracks in zip(tree, cluster):
     for trk_idx, track in enumerate(tracks): 
+      # ---------- skip empties ----------
+      if not track:
+        continue
+      
       if len(track) <= threshold:
         continue
       if n_fits >= max_hists:
         break
       
-    #   #using precalculated track's h2 means
-    #   try:
-    #     harmonic2 = event.DeDx_IhStrip[trk_idx]
-    #   except (TypeError, IndexError):
-    #       # if it's a single float per track, omit the index
-    #     harmonic2 = event.DeDx_IhStrip
-    
-    #using vectorised in loop calculation now
-      harmonic2 = harmonic2_inloop(track)
-      
-      # Freedman–Diaconis binning
-      nbins, lo, hi = freedman_diaconis_bins(track)
-      
-      # reset & reconfigure the one histogram
-      hist.Reset()
-      hist.SetBins(nbins, 0, hi)
-      bw = hist.GetBinWidth(nbins)
-      hist.GetYaxis().SetTitle(f"Entries/{bw:.2f}")
-      
-      # filling and drawing the hists
-      for hit in track:
-          hist.Fill(hit)
-      
-      mpv_guess, amp_guess, sigma_guess = seeds(hist)
-      
-      f_landau.SetRange(0, hi)
-      f_landau.SetParameters(amp_guess, mpv_guess, sigma_guess) #seeding
-      
-      # I'm trying to keep Minuit away from crazy regions
-      f_landau.SetParLimits(1, lo, hi)         # MPV must stay inside data
-      f_landau.SetParLimits(2, 0.05, lo - hi)  # σ positive, < full range
-      
-      hist.Fit(f_landau, "RQ")
-      n_fits += 1
+      # ---------- single-hit ----------
+      if len(track) == 1:
+        mpv = track[0]
+        sigma = 0.0
+        harmonic2 = harmonic2_inloop(track)
+      else:
+        #   #using precalculated track's h2 means
+        #   try:
+        #     harmonic2 = event.DeDx_IhStrip[trk_idx]
+        #   except (TypeError, IndexError):
+        #       # if it's a single float per track, omit the index
+        #     harmonic2 = event.DeDx_IhStrip
+        
+        #using vectorised in loop calculation now
+        harmonic2 = harmonic2_inloop(track)
+        
+        # Freedman–Diaconis binning
+        nbins, lo, hi = freedman_diaconis_bins(track)
+        
+        # reset & reconfigure the one histogram
+        hist.Reset()
+        hist.SetBins(nbins, 0, hi)
+        bw = hist.GetBinWidth(nbins)
+        hist.GetYaxis().SetTitle(f"Entries/{bw:.2f}")
+        
+        # filling and drawing the hists
+        for hit in track:
+            hist.Fill(hit)
+        
+        mpv_guess, amp_guess, sigma_guess = seeds(hist)
+        
+        f_landau.SetRange(0, hi)
+        f_landau.SetParameters(amp_guess, mpv_guess, sigma_guess) #seeding
+        
+        # I'm trying to keep Minuit away from crazy regions
+        f_landau.SetParLimits(1, lo, hi)         # MPV must stay inside data
+        f_landau.SetParLimits(2, 0.05, hi - lo)  # σ positive, < full range
+        
+        hist.Fit(f_landau, "RQ")
 
-      # extracting results
-      f = hist.GetFunction("f_landau")
+        # extracting results
+        f = hist.GetFunction("f_landau")
+        
+        if not f:  # fit might have failed
+          continue
+        
+        mpv = f.GetParameter(1)
+        sigma = f.GetParameter(2)
       
-      if not f:  # fit might have failed
-        continue
-      
-      mpv = f.GetParameter(1)
-      sigma = f.GetParameter(2)
+      n_fits += 1
       
       corel_params.append((mpv, harmonic2))
       params.append((mpv, sigma))
@@ -276,7 +336,6 @@ def fit_mpv(cluster: list, threshold: int, max_hists: int, verbose=False):
     "neg_mpvs": neg_ids,
     "neg_tracks": neg_tracks
 }
-      
 
 def draw_landau_fits(tree, cluster, threshold, max_hists):
     """
@@ -710,11 +769,11 @@ class HistogramDrawer:
         """
         for fmt in formats:
             canvas.SaveAs(f"{filename}.{fmt}")
-        
-                              
-        
-                   
-    
-    
-                 
+
+
+
+
+
+
+
 
