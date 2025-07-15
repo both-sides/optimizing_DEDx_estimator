@@ -23,6 +23,7 @@ pip-wheel-metadata/ # pip build outputs
 .idea/
 .DS_Store
 Thumbs.db
+_site/
 
 # ─── (Optional) packaging outputs ───────────────────────────────
 build/
