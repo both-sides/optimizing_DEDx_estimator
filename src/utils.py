@@ -690,6 +690,82 @@ def check_branch_shapes(data_dict, keys, *, ref_key=None, verbose=True):
 
 
 
+def flatten_branches(data_dict, branches, *,
+                     drop_sentinel=None,
+                     return_stats=True,
+                     verbose=True):
+    """
+    Flatten variable–length RDataFrame branches that were pulled in with
+    `AsNumpy`, optionally drop a sentinel value (e.g. -1), and (optionally)
+    return or print simple stats.
+
+    Parameters
+    ----------
+    data_dict : dict
+        Output of RDataFrame.AsNumpy() – column name → NumPy array (dtype=object
+        for std::vector branches, numeric dtype for scalar branches).
+
+    branches : str | Sequence[str]
+        One branch name or a list/tuple of names to flatten.
+
+    drop_sentinel : float | int | None, default None
+        Value that marks invalid entries (e.g. -1.0 in DeDx vectors).
+        If given, those elements are filtered out after flattening.
+
+    return_stats : bool, default True
+        If True, returns a dict keyed by branch with (min, max, mean, n)
+        so you can log or assert ranges in calling code.
+
+    verbose : bool, default True
+        Print shapes and basic stats to stdout.
+
+    Returns
+    -------
+    flat_dict : dict[str, np.ndarray]
+        Branch → 1‑D NumPy array of flattened (and cleaned) values.
+
+    stats_dict : dict[str, tuple]  (only if return_stats=True)
+        Branch → (min, max, mean, length)
+    """
+    if isinstance(branches, str):
+        branches = [branches]
+
+    flat_dict  = {}
+    stats_dict = {}
+
+    for br in branches:
+        col = data_dict[br]
+
+        # Flatten: concatenate list/array elements for each event
+        if col.dtype == "O":        # vector branch
+            flat = np.concatenate(
+                [np.asarray(ev) for ev in col if len(ev) > 0]
+            )
+        else:                       # already scalar array
+            flat = col
+
+        # Drop sentinel values, if requested
+        if drop_sentinel is not None:
+            flat = flat[flat != drop_sentinel]
+
+        flat_dict[br] = flat
+
+        if return_stats:
+            stats = (float(flat.min()), float(flat.max()),
+                     float(flat.mean()), len(flat))
+            stats_dict[br] = stats
+
+        if verbose:
+            msg = (f"{br}: shape={flat.shape}, "
+                   f"range={flat.min():.3f}–{flat.max():.3f}")
+            if drop_sentinel is not None:
+                msg += f"   (sentinel {drop_sentinel} dropped)"
+            print(msg)
+
+    return (flat_dict, stats_dict) if return_stats else flat_dict
+
+
+
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #TH1s histogram drawer class
 class HistogramDrawer:
