@@ -221,9 +221,126 @@ def freedman_diaconis_bins(values, *, range_pad=0.05):
     return max(nbins, 1), xmin - pad, xmax + pad
 
 
+def fit(cluster: list, threshold: int = 2, *, max_hists: int = float('inf'), verbose=False):
+    """
+    Loop over tracks with len(track)>threshold, fit a Landau,
+    and return dict of:
+      - mpv_pt_pairs : list of (mpv, pt) tuples
+      - params       : list of (mpv, sigma)
+      - h2           : list of h2_mean
+      - neg_mpvs     : list of "Event X Trk Y" with mpv<=0
+    """
+    
+    # ensuring that the DEDx_IhStrip branch is on
+    tree.SetBranchStatus("DeDx_IhStrip", 1)
+    tree.SetBranchStatus("IsoTrack_pt", 1)
+    
+    # pre-allocate data containers
+    mpv_pt_pairs = []     # (mpv, pt)
+    params = []           # (mpv, sigma)
+    harmonic2_means = []
+    neg_ids = []
+    neg_tracks = []
+    
+    # create one histogram & one TF1 and reuse them
+    hist = rt.TH1F("h", "tmp", 1, 0, 1)     # binning/range will be reset
+    f_landau = rt.TF1("f_landau", "landau", 0, 1)
+    
+    n_fits = 0
+    logs = []  # buffer for fit printouts
+    
+    for event, tracks in zip(tree, cluster):
+        for trk_idx, track in enumerate(tracks):
+            # ---------- skip empties ----------
+            if not track:
+                continue
+            
+            if len(track) <= threshold:
+                continue
+            if n_fits >= max_hists:
+                break
+            
+            # Get the pt value for this track
+            try:
+                pt_value = event.IsoTrack_pt[trk_idx]
+            except (TypeError, IndexError):
+                pt_value = event.IsoTrack_pt
+            
+            # ---------- single-hit ----------
+            if len(track) == 1:
+                mpv = track[0]
+                sigma = 0.0
+                harmonic2 = harmonic2_inloop(track)
+            else:
+                # using vectorised in loop calculation
+                harmonic2 = harmonic2_inloop(track)
+                
+                # Freedman–Diaconis binning
+                nbins, lo, hi = freedman_diaconis_bins(track)
+                
+                # reset & reconfigure the one histogram
+                hist.Reset()
+                hist.SetBins(nbins, 0, hi)
+                bw = hist.GetBinWidth(nbins)
+                hist.GetYaxis().SetTitle(f"Entries/{bw:.2f}")
+                
+                # filling the histogram
+                for hit in track:
+                    hist.Fill(hit)
+                
+                mpv_guess, amp_guess, sigma_guess = seeds(hist)
+                
+                f_landau.SetRange(0, hi)
+                f_landau.SetParameters(amp_guess, mpv_guess, sigma_guess)  # seeding
+                
+                # I'm trying to keep Minuit away from crazy regions
+                f_landau.SetParLimits(1, lo, hi)         # MPV must stay inside data
+                f_landau.SetParLimits(2, 0.05, hi - lo)  # σ positive, < full range
+                
+                hist.Fit(f_landau, "RQ")
+
+                # extracting results
+                f = hist.GetFunction("f_landau")
+                
+                if not f:  # fit might have failed
+                    continue
+                
+                mpv = f.GetParameter(1)
+                sigma = f.GetParameter(2)
+            
+            n_fits += 1
+            
+            # Store MPV-pt pairs and other data
+            mpv_pt_pairs.append((mpv, pt_value))
+            params.append((mpv, sigma))
+            harmonic2_means.append(harmonic2)
+            
+            if mpv <= 0:
+                neg_ids.append(f"Event {event.event} Trk {trk_idx}")
+                neg_tracks.append(track)
+            
+            if verbose:
+                errs = [f.GetParError(i) for i in range(f.GetNpar())]
+                logs.append(f" fit#{n_fits-1}: mpv = {mpv:.3g}±{errs[1]:.3g}  sigma = {sigma:.3g}±{errs[2]:.3g} pt = {pt_value:.3g}")
+        
+        if n_fits >= max_hists:
+            break
+    
+    if verbose and logs:
+        print("\n".join(logs))
+    
+    return {
+        "mpv_pt_pairs": mpv_pt_pairs,
+        "params": params,
+        "h2": harmonic2_means,
+        "neg_mpvs": neg_ids,
+        "neg_tracks": neg_tracks
+    }
+
+
 def fit_mpv(cluster: list, threshold: int = 2, *, max_hists: int = float('inf'), verbose=False):
   """
-  Loop over at most `max_hists` tracks with len(track)>threshold, fit a Landau,
+  Loop over tracks with len(track)>threshold, fit a Landau,
   and return dict of:
     - corel   : list of (mpv, h2_mean)
     - params  : list of (mpv, sigma)
