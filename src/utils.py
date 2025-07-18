@@ -633,6 +633,63 @@ def report_integrals(hists, mpv_hist=None):
         total = mpv_hist.Integral(0, nb+1)
         print(f"[MPV hist] bins=0→{nb+1}  entries={total:g}")
 
+
+def check_branch_shapes(data_dict, keys, *, ref_key=None, verbose=True):
+    """
+    Verify that the given branches have matching shapes row by row.
+
+    Parameters
+    ----------
+    data_dict : dict
+        Output of RDataFrame.AsNumpy()  maps column name → NumPy array.
+    keys : Sequence[str]
+        Branch names to compare.
+    ref_key : str, optional
+        Reference branch for per row inner length comparison.
+        Defaults to the first key in `keys`.
+    verbose : bool, default True
+        If True, print a summary and first mismatched rows lengths.
+
+    Returns
+    -------
+    ok : bool
+        True if every row is consistent across all branches.
+    bad_idx : list[int]
+        Indices of rows with mismatched inner lengths (empty when ok=True).
+    """
+    if not keys:
+        raise ValueError("`keys` cannot be empty.")
+    if ref_key is None:
+        ref_key = keys[0]
+
+    # ---------- top‑level length check ----------
+    n_rows = len(data_dict[ref_key])
+    for k in keys:
+        if len(data_dict[k]) != n_rows:
+            raise ValueError(
+                f"Top level length mismatch for {k}: {len(data_dict[k])} vs {n_rows}"
+            )
+
+    # ---------- row‑by‑row inner‑length check ----------
+    row_ok = [
+        all(len(data_dict[k][i]) == len(data_dict[ref_key][i]) for k in keys)
+        for i in range(n_rows)
+    ]
+    bad_idx = [i for i, ok in enumerate(row_ok) if not ok]
+
+    if verbose:
+        print(f"All rows consistent? {len(bad_idx) == 0}")
+        if bad_idx:
+            print(f"Found {len(bad_idx)} mismatched rows: {bad_idx[:10]} …")
+            # Inspect the first problematic row
+            i = bad_idx[0]
+            for k in keys:
+                print(f"{k}: len = {len(data_dict[k][i])}")
+
+    return len(bad_idx) == 0, bad_idx
+
+
+
 ## Classes ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #TH1s histogram drawer class
 class HistogramDrawer:
