@@ -33,50 +33,99 @@ COLOR_MAP = {
 
 
 FILTERS = [
-    ("minPixelHits",   "DeDx_PixelNoL1NOM >= 2"),
-    ("highPt",         "IsoTrack_pt > 55"),
-    ("HLT_Mu50",       "HLT_Mu50"),
-    ("validHitsFrac",  "IsoTrack_fractionOfValidHits > 0.8"),
-    ("minDedxHits",    "nDeDxMeas >= 10"),
-    ("highPurity",     "IsoTrack_isHighPurityTrack"),
-    ("chi2",           "IsoTrack_normChi2 < 5"),
-    ("dxy",            "fabs(IsoTrack_dxy) < 0.02"),
-    ("dz",             "fabs(IsoTrack_dz)  < 0.10"),
+    ("minPixelHits",   "DeDx_PixelNoL1NOM >= 2"),                    # Number of valid hits in L2-L4
+    ("highPt",         "IsoTrack_pt > 55"),                          # pT > 55 GeV
+    ("HLT_Mu50",       "HLT_Mu50"),                                  # Trigger requirement
+    ("validHitsFrac",  "IsoTrack_fractionOfValidHits > 0.8"),       # Fraction of valid hits > 0.8
+    ("minDedxHits",    "cluster_DeDxStrip.size() >= 10"),           # Number of dE/dx measurements >= 10
+    ("highPurity",     "IsoTrack_isHighPurityTrack"),               # High purity track
+    ("chi2",           "IsoTrack_normChi2 < 5"),                    # Normalized chi2 < 5
+    ("dxy",            "abs(IsoTrack_dxy) < 0.02"),                 # |dxy| < 0.02 cm
+    ("dz",             "abs(IsoTrack_dz) < 0.10"),                  # |dz| < 0.10 cm
 ]
 
 ## Functions ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def apply_sequential_filters(rdf_in, filters=FILTERS, *, logger=None):
     """
     Apply filters one after another, printing (or logging) the surviving
-    entry count after each cut.  Returns the final RDataFrame.
+    entry count after each cut. Returns the final RDataFrame.
+    
+    Parameters
+    ----------
+    rdf_in : ROOT.RDataFrame
+        Input RDataFrame to filter
+    filters : list of tuples
+        List of (label, expression) pairs for filtering
+    logger : logging.Logger, optional
+        Logger to use for output
+        
+    Returns
+    -------
+    ROOT.RDataFrame
+        Filtered RDataFrame
     """
-    if logger is None:                       # fall back to stdout
+    if logger is None:
         logger = logging.getLogger("FilterLog")
         if not logger.handlers:
             logging.basicConfig(level=logging.INFO,
                                 format="%(message)s")
 
-    counts   = []            # Count() nodes – still lazy at this point
+    counts = []            # Count() nodes – still lazy at this point
     rdf_curr = rdf_in
 
     # First count before any selections
     counts.append(("start", rdf_curr.Count()))
+    
+    logger.info(" ── Applying Sequential Filters ──")
 
-    # Chain the filters
-    for label, expr in filters:
-        rdf_curr = rdf_curr.Filter(expr, label)
-        counts.append((label, rdf_curr.Count()))
+    # Chain the filters with error handling
+    for i, (label, expr) in enumerate(filters):
+        try:
+            logger.info(f"Applying filter {i+1}/{len(filters)}: {label}")
+            logger.info(f"  Expression: {expr}")
+            
+            rdf_curr = rdf_curr.Filter(expr, label)
+            counts.append((label, rdf_curr.Count()))
+            
+        except Exception as e:
+            logger.error(f"  ❌ Filter '{label}' failed: {str(e)}")
+            logger.error(f"     Expression: {expr}")
+            
+            # Try alternative expressions for common issues
+            if "fabs" in expr:
+                alt_expr = expr.replace("fabs", "abs")
+                logger.info(f"  Trying alternative with abs(): {alt_expr}")
+                try:
+                    rdf_curr = rdf_curr.Filter(alt_expr, f"{label}_alt")
+                    counts.append((f"{label}_alt", rdf_curr.Count()))
+                    logger.info(f"  ✅ Alternative expression worked")
+                except Exception as alt_e:
+                    logger.error(f"  ❌ Alternative also failed: {str(alt_e)}")
+                    logger.warning(f"  ⚠️  Skipping filter '{label}'")
+                    continue
+            else:
+                logger.warning(f"  ⚠️  Skipping filter '{label}'")
+                continue
 
     # Trigger the event loop exactly once
     logger.info(" ── Executing event loop ──")
-    for label, counter in counts:
-        n = counter.GetValue()          # evaluation happens here
-        logger.info(f"{label:15s}: {n:10,d}")
+    try:
+        for label, counter in counts:
+            n = counter.GetValue()          # evaluation happens here
+            if label == "start":
+                logger.info(f"{'Initial':<15s}: {n:10,d}")
+            else:
+                logger.info(f"{label:<15s}: {n:10,d}")
 
-        if n == 0:
-            logger.warning(f"   ↳ no entries left after '{label}' – "
-                           "double-check this cut!")
-            break
+            if n == 0:
+                logger.warning(f"   ↳ no entries left after '{label}' – "
+                               "double-check this cut!")
+                break
+                
+    except Exception as e:
+        logger.error(f"Error during event loop execution: {str(e)}")
+        logger.error("RDataFrame may be in an invalid state")
+        raise
 
     return rdf_curr
 
