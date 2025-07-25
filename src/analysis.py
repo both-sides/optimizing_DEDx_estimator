@@ -20,9 +20,7 @@ df = rt.RDataFrame(tree)
 # filtered dataframe
 df_filtered = df.Filter(
     "HLT_Mu50 && ROOT::VecOps::Sum(IsoTrack_pt > 55) > 0",
-    "HLT_Mu50_and_anyIsoTrack55",
-    "DeDx_PixelNoL1NOM >= 2",
-    
+    "HLT_Mu50_and_anyIsoTrack55"
 )
 
 
