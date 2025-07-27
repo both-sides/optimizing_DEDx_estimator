@@ -17,10 +17,21 @@ if not tree:
 # creates a dataframe globally
 df = rt.RDataFrame(tree)
 
+sel = """
+  HLT_Mu50
+  && ROOT::VecOps::Any(IsoTrack_pt                     > 55)
+  && ROOT::VecOps::Any(IsoTrack_fractionOfValidHits   > 0.8)
+  && ROOT::VecOps::Any(IsoTrack_isHighPurityTrack)
+  && ROOT::VecOps::Any(IsoTrack_normChi2              < 5)
+  && ROOT::VecOps::Any(abs(IsoTrack_dxy)              < 0.02)
+  && ROOT::VecOps::Any(abs(IsoTrack_dz)               < 0.1)
+  && ROOT::VecOps::Any(DeDx_PixelNoL1NOM              >= 2)
+  
+"""
+
 # filtered dataframe
 df_filtered = df.Filter(
-    "HLT_Mu50 && ROOT::VecOps::Sum(IsoTrack_pt > 55) > 0",
-    "HLT_Mu50_and_anyIsoTrack55"
+    sel, "all cuts"
 )
 
 
