@@ -282,7 +282,7 @@ def fit(cluster: list, threshold: int = 2, *, max_hists: int = float('inf'), ver
     
     # ensuring that the DEDx_IhStrip branch is on
     tree.SetBranchStatus("DeDx_IhStrip", 1)
-    tree.SetBranchStatus("IsoTrack_pt", 1)
+    tree.SetBranchStatus("IsoTrack_p", 1)
     
     # pre-allocate data containers
     mpv_pt_pairs = []     # (mpv, pt)
@@ -309,11 +309,11 @@ def fit(cluster: list, threshold: int = 2, *, max_hists: int = float('inf'), ver
             if n_fits >= max_hists:
                 break
             
-            # Get the pt value for this track
+            # Get the p value for this track
             try:
-                pt_value = event.IsoTrack_pt[trk_idx]
+                pt_value = event.IsoTrack_p[trk_idx]
             except (TypeError, IndexError):
-                pt_value = event.IsoTrack_pt
+                pt_value = event.IsoTrack_p
             
             # ---------- single-hit ----------
             if len(track) == 1:
