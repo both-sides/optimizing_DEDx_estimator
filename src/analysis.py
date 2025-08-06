@@ -1,6 +1,10 @@
 import ROOT as rt
 from ROOT import VecOps
 import atexit
+from anal import build_df_final
+
+INPUT = "../data/HSCPgluino_M-1800_fromAOD.root"
+TREE  = "HSCPFullAODAnalyzer/Events"
     
 # open the ROOT file once, globally
 root_file = rt.TFile.Open("../data/HSCPgluino_M-1800_fromAOD.root") 
@@ -22,22 +26,21 @@ if not tree1:
 df = rt.RDataFrame(tree)
 df1 = rt.RDataFrame(tree1)
 
-sel = """
-  HLT_Mu50
-  && ROOT::VecOps::Any(IsoTrack_pt                     > 55)
-  && ROOT::VecOps::Any(IsoTrack_fractionOfValidHits   > 0.8)
-  && ROOT::VecOps::Any(IsoTrack_isHighPurityTrack)
-  && ROOT::VecOps::Any(IsoTrack_normChi2              < 5)
-  && ROOT::VecOps::Any(abs(IsoTrack_dxy)              < 0.02)
-  && ROOT::VecOps::Any(abs(IsoTrack_dz)               < 0.1)
-  && ROOT::VecOps::Any(DeDx_PixelNoL1NOM              >= 2)
+# sel = """
+#   HLT_Mu50
+#   && ROOT::VecOps::Any(IsoTrack_pt                     > 55)
+#   && ROOT::VecOps::Any(IsoTrack_fractionOfValidHits   > 0.8)
+#   && ROOT::VecOps::Any(IsoTrack_isHighPurityTrack)
+#   && ROOT::VecOps::Any(IsoTrack_normChi2              < 5)
+#   && ROOT::VecOps::Any(abs(IsoTrack_dxy)              < 0.02)
+#   && ROOT::VecOps::Any(abs(IsoTrack_dz)               < 0.1)
+#   && ROOT::VecOps::Any(DeDx_PixelNoL1NOM              >= 2)
   
-"""
+# """
 
 # filtered dataframe
-df_filtered = df.Filter(
-    sel, "all cuts"
-)
+df_filtered, rows, mask = build_df_final(INPUT, TREE, weight_branch=None)
+print("Events after full selection:", df_filtered.Count().GetValue())
 
 
 # some interested branch lists & color map ----------------------------------------------------------
@@ -59,7 +62,6 @@ COLOR_MAP = {
     11: rt.kSpring,
     12: rt.kTeal,
     13: rt.kGray,  # neutral mid‐tone
-    # two extra custom colors:
     14: rt.TColor.GetColor("#8B4513"),  # Brown
     15: rt.TColor.GetColor("#00CED1"),  # DarkTurquoise
 }

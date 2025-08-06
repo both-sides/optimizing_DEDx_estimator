@@ -1,26 +1,24 @@
-#!/usr/bin/env python3
 import ROOT, csv
 ROOT.gStyle.SetOptStat(0)
-ROOT.EnableImplicitMT()   # optional speed-up on multicore
+ROOT.EnableImplicitMT()   #speed-up on multicore
 _KEEPALIVE = []
 
 
 # -----------------------------
-# Branch names (edit to match your ntuples)
+# Branch names 
 # -----------------------------
 HLT_BOOL         = "HLT_Mu50"
 PT               = "IsoTrack_pt"
-ETA              = "IsoTrack_eta"                        # if you don't have it, remove that cut below
+ETA              = "IsoTrack_eta"                     
 FRAC_VALID       = "IsoTrack_fractionOfValidHits"
 HIGH_PUR         = "IsoTrack_isHighPurityTrack"
 NORM_CHI2        = "IsoTrack_normChi2"
 DXY              = "IsoTrack_dxy"
 DZ               = "IsoTrack_dz"
 PIXELS_L2L4      = "DeDx_PixelNoL1NOM"
-NDEDX            = None  # e.g., "IsoTrack_nDeDx"; set if available
+NDEDX            = None  
 
-# ---- Define the sequential *per-track* cuts (same track accumulates cuts) ----
-# NOTE: Kept EXACTLY as in your working version (uses VecOps::abs)
+# ---- Defining the sequential *per-track* cuts (same track accumulates cuts) ----
 track_cuts = [
     ("pT > 55 GeV",                   f"({PT} > 55)"),
     ("|eta| < 1",                     f"(ROOT::VecOps::abs({ETA}) < 1)"),
@@ -32,24 +30,25 @@ track_cuts = [
     ("|dz| < 0.1 cm",                 f"(ROOT::VecOps::abs({DZ})  < 0.1)"),
     ("|dxy| < 0.02 cm",               f"(ROOT::VecOps::abs({DXY}) < 0.02)"),
 ]
+
 track_cuts = [c for c in track_cuts if c is not None]
 
 # -----------------------------
-# Importable helper: build df_final WITHOUT argparse
+# Importable helper: building df_final WITHOUT argparse
 # -----------------------------
 def build_df_final(input_file: str, tree_path: str, weight_branch: str | None = None):
     """
     Minimal helper to obtain the final filtered RDataFrame without touching argparse.
     Returns (df_final, rows, cum_mask).
     """
-    # --- open file / build RDataFrame (same logic as your script) ---
+
     f = ROOT.TFile.Open(input_file)
     if not f or f.IsZombie():
         raise RuntimeError(f"Could not open {input_file}")
     obj = f.Get(tree_path)
     if obj and obj.InheritsFrom("TTree"):
         df = ROOT.RDataFrame(obj)      # TTree pointer
-        _KEEPALIVE.append(f)           # <-- keep the TFile alive to avoid segfaults
+        _KEEPALIVE.append(f)           # <-- keeping the TFile alive to avoid segfaults
     else:
         df = ROOT.RDataFrame(tree_path, input_file)
 
@@ -81,7 +80,7 @@ def build_df_final(input_file: str, tree_path: str, weight_branch: str | None = 
 
 
 # -----------------------------
-# CLI entrypoint (unchanged behavior when executed as a script)
+# CLI entrypoint (should have unchanged behavior when executed as a script)
 # -----------------------------
 def main():
     import argparse
@@ -94,7 +93,7 @@ def main():
 
     df_final, rows, cum_mask = build_df_final(args.input, args.tree, args.weight)
 
-    # Print summary (same as before)
+    # Print summary table
     def fmt_row(name, events, eff):
         return f"{name:<32} {events:>12}   {100.0*eff:6.3f} %"
 
