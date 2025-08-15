@@ -4,11 +4,12 @@ import atexit
 from anal import build_df_final
 
 INPUT = "../data/HSCPgluino_M-1800_fromAOD.root"
+INPUT1 = "../data/HSCPgluino_M-1800_fromAOD_all.root"
 TREE  = "HSCPFullAODAnalyzer/Events"
     
 # open the ROOT file once, globally
 root_file = rt.TFile.Open("../data/HSCPgluino_M-1800_fromAOD.root") 
-data_root_file = rt.TFile.Open("../data/Data18_03639171301F_fromAOD.root")
+data_root_file = rt.TFile.Open("../data/Data18_03639171301F_fromAOD.root") #low momentum tracks for extrapolating K and C constants
 # ensures it gets closed when the intergreter(jupyter kernel) closes
 atexit.register(root_file.Close)
 
@@ -17,6 +18,7 @@ tree = root_file.Get("HSCPFullAODAnalyzer/Events")
 if not tree:
     raise RuntimeError("Could not find HSCPFullAODAnalyzer/Events in the ROOT file")
 
+#low momentum tracks for extrapolating K and C constants
 tree1 = data_root_file.Get("HSCPFullAODAnalyzer/Events")
 if not tree1:
     raise RuntimeError("Could not find HSCPFullAODAnalyzer/Events in the ROOT file")
@@ -41,6 +43,9 @@ df1 = rt.RDataFrame(tree1)
 # filtered dataframe
 df_filtered, rows, mask = build_df_final(INPUT, TREE, weight_branch=None)
 print("Events after full selection:", df_filtered.Count().GetValue())
+
+df_filtered_all, rows_all, mask_all = build_df_final(INPUT1, TREE, weight_branch=None)
+print("Events after full selection:", df_filtered_all.Count().GetValue())
 
 
 # some interested branch lists & color map ----------------------------------------------------------
