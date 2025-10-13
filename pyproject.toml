@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adaptive-trunc"
+version = "0.0.1"
+requires-python = ">=3.9"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["utils"]              # <-- exposes src/utils.py as top-level "utils"
+
+[tool.setuptools.packages.find]
+where = ["src"]                     # <-- finds packages under src/, e.g. src/adaptive_trunc

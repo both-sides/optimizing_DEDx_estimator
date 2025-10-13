@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+setup.cfg
+src/analysis.py
+src/utils.py
+src/adaptive_trunc.egg-info/PKG-INFO
+src/adaptive_trunc.egg-info/SOURCES.txt
+src/adaptive_trunc.egg-info/dependency_links.txt
+src/adaptive_trunc.egg-info/top_level.txt

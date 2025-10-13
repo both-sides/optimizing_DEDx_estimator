@@ -3,14 +3,14 @@ from ROOT import VecOps
 import atexit
 from anal import build_df_final
 
-INPUT = "../data/HSCPgluino_M-1800_fromAOD.root"
-INPUT1 = "../data/HSCPgluino_M-1800_fromAOD_all.root"
+INPUT = "/home/bothsides/projects/optimizing_DEDx_estimator/data/HSCPgluino_M-1800_fromAOD.root"
+INPUT1 = "/home/bothsides/projects/optimizing_DEDx_estimator/data/HSCPgluino_M-1800_fromAOD_all.root"
 TREE  = "HSCPFullAODAnalyzer/Events"
     
 # open the ROOT file once, globally
 root_file = rt.TFile.Open(INPUT) #sample MC HSCP tracks
 root_file_all = rt.TFile.Open(INPUT1) # all MC HSCP tracks
-data_root_file = rt.TFile.Open("../data/Data18_03639171301F_fromAOD.root") #low momentum tracks for extrapolating K and C constants
+data_root_file = rt.TFile.Open("/home/bothsides/projects/optimizing_DEDx_estimator/data/Data18_03639171301F_fromAOD.root") #low momentum tracks for extrapolating K and C constants
 
 # ensures it gets closed when the intergreter(jupyter kernel) closes
 atexit.register(root_file.Close)
